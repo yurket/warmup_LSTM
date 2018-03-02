@@ -9,12 +9,17 @@ import tensorflow as tf
 
 # 50 bits long string
 INPUT_SIZE = 50
+N_TRAIN_SAMPLES = 200
 # hidden state of LSTM cell equal to sequence length
 HIDDEN_UNITS = 50
 BATCH_SIZE = 100
 LEARNING_RATE = 0.001
 
-def generate_dataset(n=200):
+TRAINING_STEPS = 1000
+DISPLAY_STEP = 100
+
+
+def generate_dataset(n=N_TRAIN_SAMPLES):
     max_50_bit_number = 2**50 - 1
     random_numbers = np.random.randint(0, max_50_bit_number, n)
     X_strings = map(lambda x: "{:050b}".format(x), random_numbers)
@@ -37,7 +42,7 @@ def create_rnn_cell(cell_type='rnn'):
         return tf.nn.rnn_cell.BasicLSTMCell(num_units=HIDDEN_UNITS)
 
 
-def build_model(dataset):
+def build_and_train_model(dataset):
     print("[..] Building network model")
     X = tf.placeholder(tf.float32, (BATCH_SIZE, INPUT_SIZE), name="X")
     y = tf.placeholder(tf.float32, (BATCH_SIZE, 2), name="y")
@@ -63,15 +68,20 @@ def build_model(dataset):
     init = tf.global_variables_initializer()
     with tf.Session() as sess:
         sess.run(init)
-        sess.run(train_op, {X: X_train, y: y_train})
+
+        for step in range(TRAINING_STEPS):
+            for batch_start in range(0, N_TRAIN_SAMPLES, BATCH_SIZE):
+                loss_val, _ = sess.run([loss, train_op],
+                                       {X: X_train[batch_start : batch_start + BATCH_SIZE],
+                                        y: y_train[batch_start : batch_start + BATCH_SIZE]})
+
+            if (step+1) % DISPLAY_STEP == 0:
+                print("Step {0}, loss: {1}, accuracy:".format(step, loss_val))
 
 
 def main():
-    dataset = generate_dataset()
-    print("Dataset: ")
-    print("X: ", dataset[0])
-    print("y: ", dataset[1])
-    train_op = build_model(dataset)
+    dataset = generate_dataset(N_TRAIN_SAMPLES)
+    train_op = build_and_train_model(dataset)
 
 
 if __name__ == '__main__':
