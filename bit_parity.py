@@ -9,14 +9,14 @@ import tensorflow as tf
 
 # 50 bits long string
 INPUT_SIZE = 50
-N_TRAIN_SAMPLES = 200
+N_TRAIN_SAMPLES = 100000
 # hidden state of LSTM cell equal to sequence length
 HIDDEN_UNITS = 50
-BATCH_SIZE = 100
-LEARNING_RATE = 0.001
+BATCH_SIZE = 1000
+LEARNING_RATE = 0.005
 
-TRAINING_STEPS = 1000
-DISPLAY_STEP = 100
+TRAINING_STEPS = 3000
+DISPLAY_STEP = TRAINING_STEPS / 100
 
 
 def generate_dataset(n=N_TRAIN_SAMPLES):
@@ -57,11 +57,13 @@ def build_and_train_model(dataset):
         initializer=tf.contrib.layers.xavier_initializer())
 
     logits = tf.matmul(state, Why) + b
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits))
+    loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits))
+    tf.summary.scalar("CE_loss", loss_op)
 
     optimizer = tf.train.AdamOptimizer(LEARNING_RATE)
-    train_op = optimizer.minimize(loss)
+    train_op = optimizer.minimize(loss_op)
 
+    summ = tf.summary.merge_all()
 
     print("[..] Training the model")
     X_train, y_train = np.array(dataset[0]), np.array(dataset[1])
@@ -69,13 +71,25 @@ def build_and_train_model(dataset):
     with tf.Session() as sess:
         sess.run(init)
 
+        writer = tf.summary.FileWriter("./tensorboard")
+        writer.add_graph(sess.graph)
+
         for step in range(TRAINING_STEPS):
+            i = 0
             for batch_start in range(0, N_TRAIN_SAMPLES, BATCH_SIZE):
-                loss_val, _ = sess.run([loss, train_op],
+                loss_val, _ = sess.run([loss_op, train_op],
                                        {X: X_train[batch_start : batch_start + BATCH_SIZE],
                                         y: y_train[batch_start : batch_start + BATCH_SIZE]})
 
+                i += 1
+                if i % 5 == 0:
+                    s = sess.run(summ, feed_dict={X: X_train[batch_start : batch_start + BATCH_SIZE],
+                                                  y: y_train[batch_start : batch_start + BATCH_SIZE]})
+                    writer.add_summary(s, step)
+
             if (step+1) % DISPLAY_STEP == 0:
+                # writer = tf.summary.FileWriter('.')
+                # writer.add_graph(tf.get_default_graph())
                 print("Step {0}, loss: {1}, accuracy:".format(step, loss_val))
 
 
