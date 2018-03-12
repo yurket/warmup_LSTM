@@ -3,6 +3,8 @@
 
 from __future__ import print_function
 
+import shutil
+
 import numpy as np
 import tensorflow as tf
 
@@ -12,11 +14,13 @@ INPUT_SIZE = 50
 N_TRAIN_SAMPLES = 100000
 # hidden state of LSTM cell equal to sequence length
 HIDDEN_UNITS = 50
-BATCH_SIZE = 1000
+BATCH_SIZE = 2000
 LEARNING_RATE = 0.005
 
-TRAINING_STEPS = 3000
+TRAINING_STEPS = 2000
 DISPLAY_STEP = TRAINING_STEPS / 100
+
+TENSORBOARD_DIR = "./tensorboard"
 
 
 def generate_dataset(n=N_TRAIN_SAMPLES):
@@ -51,19 +55,29 @@ def build_and_train_model(dataset):
     state = tf.zeros([BATCH_SIZE, HIDDEN_UNITS])
     _, state = rnn_cell(X, state)
 
-    Why = tf.get_variable("Why", shape=[HIDDEN_UNITS, 2],
-        initializer=tf.contrib.layers.xavier_initializer())
-    b = tf.get_variable("b", shape=[2,],
-        initializer=tf.contrib.layers.xavier_initializer())
+    with tf.name_scope("Logits"):
+        Why = tf.get_variable("Why", shape=[HIDDEN_UNITS, 2],
+                              initializer=tf.contrib.layers.xavier_initializer())
+        b = tf.get_variable("b", shape=[2,],
+                            initializer=tf.contrib.layers.xavier_initializer())
+        logits = tf.matmul(state, Why) + b
 
-    logits = tf.matmul(state, Why) + b
-    loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits))
-    tf.summary.scalar("CE_loss", loss_op)
+    with tf.name_scope("CE"):
+        loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits))
+        tf.summary.scalar("CE_loss", loss_op)
 
-    optimizer = tf.train.AdamOptimizer(LEARNING_RATE)
-    train_op = optimizer.minimize(loss_op)
+    with tf.name_scope("accuracy"):
+        assert(tf.argmax(logits, axis=1).shape == tf.argmax(y, axis=1).shape)
+        correct_predictions = tf.equal(tf.argmax(logits, axis=1), tf.argmax(y, axis=1))
+        accuracy_op = tf.reduce_mean(tf.cast(correct_predictions, tf.float32))
+        tf.summary.scalar("accuracy", accuracy_op)
+
+    with tf.name_scope("train"):
+        train_op = tf.train.AdamOptimizer(LEARNING_RATE).minimize(loss_op)
+
 
     summ = tf.summary.merge_all()
+
 
     print("[..] Training the model")
     X_train, y_train = np.array(dataset[0]), np.array(dataset[1])
@@ -71,13 +85,13 @@ def build_and_train_model(dataset):
     with tf.Session() as sess:
         sess.run(init)
 
-        writer = tf.summary.FileWriter("./tensorboard")
+        writer = tf.summary.FileWriter(TENSORBOARD_DIR)
         writer.add_graph(sess.graph)
 
         for step in range(TRAINING_STEPS):
             i = 0
             for batch_start in range(0, N_TRAIN_SAMPLES, BATCH_SIZE):
-                loss_val, _ = sess.run([loss_op, train_op],
+                loss_val, acc_val, _ = sess.run([loss_op, accuracy_op, train_op],
                                        {X: X_train[batch_start : batch_start + BATCH_SIZE],
                                         y: y_train[batch_start : batch_start + BATCH_SIZE]})
 
@@ -90,10 +104,15 @@ def build_and_train_model(dataset):
             if (step+1) % DISPLAY_STEP == 0:
                 # writer = tf.summary.FileWriter('.')
                 # writer.add_graph(tf.get_default_graph())
-                print("Step {0}, loss: {1}, accuracy:".format(step, loss_val))
+                print("Step {0}, loss: {1:.4}, accuracy: {2:.4}".format(step, loss_val, acc_val))
+
+def clean_logs_from_previous_run():
+    print("[..] Removing \"{}\" dir".format(TENSORBOARD_DIR))
+    shutil.rmtree(TENSORBOARD_DIR, ignore_errors=True)
 
 
 def main():
+    clean_logs_from_previous_run()
     dataset = generate_dataset(N_TRAIN_SAMPLES)
     train_op = build_and_train_model(dataset)
 
