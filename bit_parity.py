@@ -11,13 +11,12 @@ import tensorflow as tf
 
 # 50 bits long string
 INPUT_SIZE = 50
-N_TRAIN_SAMPLES = 100000
-# hidden state of LSTM cell equal to sequence length
-HIDDEN_UNITS = 50
-BATCH_SIZE = 2000
-LEARNING_RATE = 0.005
+N_TRAIN_SAMPLES = 102400
+HIDDEN_UNITS = 1
+BATCH_SIZE = 256
+LEARNING_RATE = 0.5
 
-TRAINING_STEPS = 2000
+TRAINING_STEPS = 1000
 DISPLAY_STEP = TRAINING_STEPS / 100
 
 TENSORBOARD_DIR = "./tensorboard"
@@ -51,16 +50,24 @@ def build_and_train_model(dataset):
     X = tf.placeholder(tf.float32, (BATCH_SIZE, INPUT_SIZE), name="X")
     y = tf.placeholder(tf.float32, (BATCH_SIZE, 2), name="y")
 
+    # rnn_cell = create_rnn_cell('rnn')
+    # rnn_iterations = INPUT_SIZE / HIDDEN_UNITS
+    # state = tf.zeros([BATCH_SIZE, HIDDEN_UNITS])
+    # with tf.variable_scope('RNN'):
+    #     for i in range(rnn_iterations):
+    #         if i > 0:
+    #             tf.get_variable_scope().reuse_variables()
+    #         _, state = rnn_cell(X[:, i*HIDDEN_UNITS:(i+1)*HIDDEN_UNITS], state)
+
     rnn_cell = create_rnn_cell('rnn')
-    state = tf.zeros([BATCH_SIZE, HIDDEN_UNITS])
-    _, state = rnn_cell(X, state)
+    outputs, final_state = tf.nn.static_rnn(rnn_cell, )
 
     with tf.name_scope("Logits"):
         Why = tf.get_variable("Why", shape=[HIDDEN_UNITS, 2],
                               initializer=tf.contrib.layers.xavier_initializer())
         b = tf.get_variable("b", shape=[2,],
                             initializer=tf.contrib.layers.xavier_initializer())
-        logits = tf.matmul(state, Why) + b
+        logits = tf.matmul(final_state, Why) + b
 
     with tf.name_scope("CE"):
         loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits))
@@ -91,7 +98,7 @@ def build_and_train_model(dataset):
         for step in range(TRAINING_STEPS):
             i = 0
             for batch_start in range(0, N_TRAIN_SAMPLES, BATCH_SIZE):
-                loss_val, acc_val, _ = sess.run([loss_op, accuracy_op, train_op],
+                _, loss_val, acc_val = sess.run([train_op, loss_op, accuracy_op],
                                        {X: X_train[batch_start : batch_start + BATCH_SIZE],
                                         y: y_train[batch_start : batch_start + BATCH_SIZE]})
 
@@ -105,6 +112,7 @@ def build_and_train_model(dataset):
                 # writer = tf.summary.FileWriter('.')
                 # writer.add_graph(tf.get_default_graph())
                 print("Step {0}, loss: {1:.4}, accuracy: {2:.4}".format(step, loss_val, acc_val))
+
 
 def clean_logs_from_previous_run():
     print("[..] Removing \"{}\" dir".format(TENSORBOARD_DIR))
